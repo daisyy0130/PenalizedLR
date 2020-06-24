@@ -1,8 +1,9 @@
+library(devtools)
 devtools::install_github("msesia/snpknock")
-library(SNPknock)
 library(dplyr)
+library(SNPknock)
 
-## Fit the Hidden Markov Model on Genotype data with fastPHASE
+# Fit the Hidden Markov Model on Genotype data with fastPHASE
 # Load input genotype data on 179 CNs for 69 SNPs in NEDD9
 load("/Users/daisyyu/Desktop/Input_dataset.RData") 
 Xinp_file=writeXtoInp(X)
@@ -36,7 +37,7 @@ simKnockoffGenotypes=function(n,Beta=log(rf(K,m,m)),hmm) {
   data$case=NULL
   for (i in 1:dim(data)[1]) {
     s=sum(data[i,cov_ind]*Beta)
-    prob=exp(-5+s)/(1+exp(-5+s))
+    prob=exp(-2+s)/(1+exp(-2+s))
     if (prob >= 0.5) {data$case[i]=1}
     else {data$case[i]=0}
   }
@@ -56,5 +57,4 @@ simKnockoffGenotypes=function(n,Beta=log(rf(K,m,m)),hmm) {
 
 m=2
 K=30
-n=200
-sim_data=simKnockoffGenotypes(n,Beta=log(rf(K,m,m)),hmm)
+sim_data=simKnockoffGenotypes(n=200,Beta=log(rf(K,m,m)),hmm)
