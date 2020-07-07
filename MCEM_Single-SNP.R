@@ -1,9 +1,20 @@
-simKnockoffGenotypes=function(n,Beta=log(rf(K,m,m)),hmm) {
+simKnockoffGenotypes=function(n,Beta=log(rf(K,m,m))) {
   # Input: 
   # - n is the sample size
   # - Beta is the value of log-OR simulated from log-F(m,m) distribution
-  # - hmm is the hidden Markov model contructed by fastPHASE
   # Output: sim_data
+  
+  # Fit the Hidden Markov Model on Genotype data with fastPHASE
+  # load input genotype data on 179 CNs for 69 SNPs in NEDD9
+  Xinp_file=writeXtoInp(X)
+  fp_path="/scratch/yya188/fastPHASE" 
+  #fp_path="/Users/daisyyu/Desktop/Simulation/fastPHASE"
+  fp_outPath=runFastPhase(fp_path, Xinp_file, K=12, numit=30)
+  r_file=paste(fp_outPath,"_rhat.txt",sep="")
+  alpha_file=paste(fp_outPath,"_alphahat.txt",sep="")
+  theta_file=paste(fp_outPath,"_thetahat.txt",sep="")
+  char_file=paste(fp_outPath,"_origchars",sep="")
+  hmm=loadHMM(r_file,alpha_file,theta_file,char_file)
   
   # Simulate knockoff genotypes 
   seed=sample(10000:50000,60,replace=F)
@@ -18,15 +29,15 @@ simKnockoffGenotypes=function(n,Beta=log(rf(K,m,m)),hmm) {
   cov_ind=sample(1:69,K,replace=F) 
   data=data[,cov_ind]
   data$case=NULL
+  
   for (i in 1:dim(data)[1]) {
     s=sum(data[i,]*Beta)
-    prob=exp(-2+s)/(1+exp(-2+s))
-    if (prob >= 0.5) {data$case[i]=1}
-    else {data$case[i]=0}
+    prob=exp(s)/(1+exp(s))
+    data$case[i]=rbinom(1,1,prob)
   }
   
   # Sample case/control status
-  # case-control ratio = 1:4
+  # case-control ratio: 1:4
   no_case=n/5*1
   no_con=n/5*4
   data_con=data %>% filter(case==0) 
@@ -55,11 +66,11 @@ MCEM=function(m,data,N) {
   p=2
   threshold=1E-04
   
-  # Weight=function(beta,con,case) { 
+  # Weight=function(beta,con,case) {
   #   sum(-log(1+exp(AlphaStar[p]+con*beta)))+sum(AlphaStar[p]+case*beta-log(1+exp(AlphaStar[p]+case*beta)))
   # }
-  Weight=function(beta) { 
-    prod(exp(data_k$case*(AlphaStar[p]+data_k$X*beta))/(1+exp(AlphaStar[p]+data_k$X*beta)))
+  Weight=function(beta) {
+    prod(exp(data$case*(AlphaStar[p]+data$X*beta))/(1+exp(AlphaStar[p]+data$X*beta)))
   }
   
   # caseX=data %>% filter(case=="1") %>% select(-case)
@@ -75,7 +86,8 @@ MCEM=function(m,data,N) {
   while(abs(AlphaStar[p]-AlphaStar[p-1])>=threshold) { 
     W_t=numeric() # weight
     for (j in 1:N) {
-      W_t[j]=Weight(betas[j])  
+      W_t[j]=Weight(betas[j]) 
+      #W_t[j]=exp(Weight(betas[j],conX,caseX))
     }
     W=rep(W_t,each=dim(data)[1])
     
@@ -127,5 +139,5 @@ profilelkhd=function(data,mvals,N) {
 }
 
 
-save(simKnockoffGenotypes,MCEM,lkhdk,profilelkhd,file="MCEM_Single-SNP.RData")
+#save(simKnockoffGenotypes,MCEM,lkhdk,profilelkhd,file="MCEM_Single-SNP.RData")
 
