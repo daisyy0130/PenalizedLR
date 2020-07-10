@@ -1,13 +1,13 @@
 simKnockoffGenotypes=function(n,Beta=log(rf(K,m,m))) {
-  # Input: 
+  # Input:
   # - n is the sample size
   # - Beta is the value of log-OR simulated from log-F(m,m) distribution
   # Output: sim_data
-  
+
   # Fit the Hidden Markov Model on Genotype data with fastPHASE
   # load input genotype data on 179 CNs for 69 SNPs in NEDD9
   Xinp_file=writeXtoInp(X)
-  fp_path="/scratch/yya188/fastPHASE" 
+  fp_path="/scratch/yya188/fastPHASE"
   #fp_path="/Users/daisyyu/Desktop/Simulation/fastPHASE"
   fp_outPath=runFastPhase(fp_path, Xinp_file, K=12, numit=30)
   r_file=paste(fp_outPath,"_rhat.txt",sep="")
@@ -15,37 +15,60 @@ simKnockoffGenotypes=function(n,Beta=log(rf(K,m,m))) {
   theta_file=paste(fp_outPath,"_thetahat.txt",sep="")
   char_file=paste(fp_outPath,"_origchars",sep="")
   hmm=loadHMM(r_file,alpha_file,theta_file,char_file)
-  
-  # Simulate knockoff genotypes 
+
+  # Simulate knockoff genotypes
   seed=sample(10000:50000,60,replace=F)
   data=as.data.frame(NULL)
   for (i in 1:60) {
     Xk=knockoffGenotypes(X,hmm$r,hmm$alpha,hmm$theta,seed=seed[i])
     data=rbind(data,Xk)
   }
-  
+
   # Calculate disease probability for each individual
   # choose a subset of SNPs to be casually associated with the disease
-  cov_ind=sample(1:69,K,replace=F) 
+  cov_ind=sample(1:69,K,replace=F)
   data=data[,cov_ind]
   data$case=NULL
-  
+
   for (i in 1:dim(data)[1]) {
     s=sum(data[i,]*Beta)
     prob=exp(s)/(1+exp(s))
     data$case[i]=rbinom(1,1,prob)
   }
-  
+
   # Sample case/control status
-  # case-control ratio: 1:4
-  no_case=n/5*1
-  no_con=n/5*4
-  data_con=data %>% filter(case==0) 
-  data_case=data %>% filter(case==1) 
+  # case-control ratio: 1:1
+  no_case=n/2
+  no_con=n/2
+  data_con=data %>% filter(case==0)
+  data_case=data %>% filter(case==1)
   sim_data=rbind(data_con[sample(nrow(data_con),no_con,replace=F),],
-                 data_case[sample(nrow(data_case),no_case,replace=F),]) 
+                 data_case[sample(nrow(data_case),no_case,replace=F),])
   colnames(sim_data)=c(paste0("x",1:K),"case");rownames(sim_data)=NULL
   return (sim_data)
+}
+
+
+simUnmatched=function(n,Beta,p,scale=FALSE) {
+  # Input: 
+  # - n is total sample size
+  # - beta is value of parameter of interest
+  # - p is number of nuisance covariates
+  # Output: sim_data
+  
+  ncase=n/2; ncon=n/2  # assuming 1:1 con:case ratio
+  Beta=c(Beta,rep(1,p)) 
+  ncov=p+length(Beta)
+  conX=caseX = NULL 
+  for(i in 1:ncov) {
+    conX=cbind(conX,rnorm(ncon,mean=0,sd=1))
+    caseX=cbind(caseX,rnorm(ncase,mean=Beta[i],sd=1))
+  }
+  X=rbind(caseX,conX)
+  if(scale) X = round(scale(X))
+  colnames(X)=paste0("x",1:ncov);rownames(X) = NULL
+  case=c(rep(1,ncase),rep(0,ncon))
+  return (data.frame(X,case))
 }
 
 
@@ -56,7 +79,7 @@ MCEM=function(m,data,N) {
   # - N is number of Monte Carlo replicates
   # Output: Alpha_star
   
-  # model=glm(case~.,data=data,family=binomial(link="logit")) 
+  # model=glm(case~.,data=data,family=binomial(link="logit"),maxit=100)
   # alpha_star_initial=model$coefficients[1]
   
   AlphaStar=numeric()
@@ -70,8 +93,7 @@ MCEM=function(m,data,N) {
   Weight=function(beta) {
     prod(exp(data[,K+1]*(AlphaStar[p]+data[,1:K]%*%beta))/(1+exp(AlphaStar[p]+data[,1:K]%*%beta)))
   }
-  
-  Y=rep(data[,K+1],times=N)
+  Y=rep(data[,K+1],times=N) 
   betas=matrix(data=log(rf(K*N,m,m)),nrow=K,ncol=N)
   
   O=numeric() # offsets
@@ -86,8 +108,8 @@ MCEM=function(m,data,N) {
     }
     W=rep(W_t,each=dim(data)[1])
     
-    g=glm(Y~offset(O),weights=W,family=binomial(link="logit"))
-    #cat("EM iteration",p-1,":",g$coefficients,"\n")
+    g=glm(Y~offset(O),weights=W,family=binomial(link="logit"),maxit=100)
+    cat("EM iteration",p-1,":",g$coefficients,"\n")
     p=p+1
     AlphaStar[p]=g$coefficients
   }
@@ -108,7 +130,7 @@ lkhdk=function(alpha_star,data,m,N) {
   lvec=rep(NA,N)
   for(j in 1:N) {
     lvec[j]=prod(exp(data[,K+1]*(alpha_star+data[,1:K]%*%betas[,j]))/(1+exp(alpha_star+data[,1:K]%*%betas[,j])))
-  }
+    }
   return(log(mean(lvec)))
 }  
 
@@ -129,9 +151,5 @@ profilelkhd=function(data,mvals,N) {
   return(ll)
 }
 
-
-#save(simKnockoffGenotypes,MCEM,lkhdk,profilelkhd,file="MCEM_Multiple-SNP.RData")
-
-
-
+#save(simKnockoffGenotypes,simUnmatched,MCEM,lkhdk,profilelkhd,file="MCEM_Multiple-SNP.RData")
 
