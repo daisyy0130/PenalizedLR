@@ -37,15 +37,38 @@ simKnockoffGenotypes=function(n,Beta=log(rf(K,m,m))) {
   }
   
   # Sample case/control status
-  # case-control ratio: 1:4
-  no_case=n/5*1
-  no_con=n/5*4
+  # case-control ratio: 1:1
+  no_case=n/2
+  no_con=n/2
   data_con=data %>% filter(case==0) 
   data_case=data %>% filter(case==1) 
   sim_data=rbind(data_con[sample(nrow(data_con),no_con,replace=F),],
                  data_case[sample(nrow(data_case),no_case,replace=F),]) 
   colnames(sim_data)=c(paste0("x",1:K),"case");rownames(sim_data)=NULL
   return (sim_data)
+}
+
+
+simUnmatched=function(n,Beta,p,scale=FALSE) {
+  # Input: 
+  # - n is total sample size
+  # - beta is value of parameter of interest
+  # - p is number of nuisance covariates
+  # Output: sim_data
+  
+  ncase=n/2; ncon=n/2  # assuming 1:1 con:case ratio
+  Beta=c(Beta,rep(1,p)) 
+  ncov=p+length(Beta)
+  conX=caseX = NULL 
+  for(i in 1:ncov) {
+    conX=cbind(conX,rnorm(ncon,mean=0,sd=1))
+    caseX=cbind(caseX,rnorm(ncase,mean=Beta[i],sd=1))
+  }
+  X=rbind(caseX,conX)
+  if(scale) X = round(scale(X))
+  colnames(X)=paste0("x",1:ncov);rownames(X) = NULL
+  case=c(rep(1,ncase),rep(0,ncon))
+  return (data.frame(X,case))
 }
 
 
@@ -56,23 +79,23 @@ MCEM=function(m,data,N) {
   # - N is number of Monte Carlo replicates
   # Output: Alpha_star
   
-  model=glm(case~.,data=data,family=binomial(link="logit")) 
-  alpha_star_initial=model$coefficients[1]
+  # model=glm(case~.,data=data,family=binomial(link="logit"),maxit=100)
+  # alpha_star_initial=model$coefficients[1]
   
   AlphaStar=numeric()
   AlphaStar[1]=0
-  AlphaStar[2]=alpha_star_initial
+  AlphaStar[2]=-5
   
   p=2
   threshold=1E-04
   
-  # Weight=function(beta,con,case) {
-  #   sum(-log(1+exp(AlphaStar[p]+con*beta)))+sum(AlphaStar[p]+case*beta-log(1+exp(AlphaStar[p]+case*beta)))
-  # }
   Weight=function(beta) {
     prod(exp(data$case*(AlphaStar[p]+data$X*beta))/(1+exp(AlphaStar[p]+data$X*beta)))
   }
   
+  # Weight=function(beta,con,case) {
+  #   sum(-log(1+exp(AlphaStar[p]+con*beta)))+sum(AlphaStar[p]+case*beta-log(1+exp(AlphaStar[p]+case*beta)))
+  # }
   # caseX=data %>% filter(case=="1") %>% select(-case)
   # conX=data %>% filter(case=="0") %>% select(-case)
   Y=rep(data$case,times=N)
@@ -91,7 +114,7 @@ MCEM=function(m,data,N) {
     }
     W=rep(W_t,each=dim(data)[1])
     
-    g=glm(Y~offset(O),weights=W,family=binomial(link="logit"))
+    g=glm(Y~offset(O),weights=W,family=binomial(link="logit"),maxit=100)
     cat("EM iteration",p-1,":",g$coefficients,"\n")
     p=p+1
     AlphaStar[p]=g$coefficients
@@ -130,7 +153,7 @@ profilelkhd=function(data,mvals,N) {
     ll[m]=0
     for(k in 1:K) {
       data_k=data[,c(K+1,k)] # first K covars, then the case
-      names(data_k)=c("case","X")
+      names(data_k)=c("case","X") 
       alpha_k=MCEM(m,data_k,N) # estimating alpha_k by MCEM
       ll[m]=ll[m]+lkhdk(alpha_k,data_k,m,N)
     }
@@ -139,5 +162,5 @@ profilelkhd=function(data,mvals,N) {
 }
 
 
-#save(simKnockoffGenotypes,MCEM,lkhdk,profilelkhd,file="MCEM_Single-SNP.RData")
+#save(simKnockoffGenotypes,simUnmatched,MCEM,lkhdk,profilelkhd,file="MCEM_Single-SNP.RData")
 
