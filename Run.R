@@ -11,7 +11,7 @@ print(n)
 
 m=4
 K=10
-set.seed(2222*n+K)
+set.seed(2020*n+K)
 #sim_data=simUnmatched(n=200,Beta=log(rf(K,m,m)),p=0)     # continuous data
 sim_data=simKnockoffGenotypes(n=200,Beta=log(rf(K,m,m)))  # SNP data
 pp=profilelkhd(data=sim_data,mvals=c(1:20),N=1000)
